@@ -2,6 +2,11 @@ tinyfish
 langgraph
 langchain
 langchain-google-genai
+google-generativeai
 streamlit
 python-dotenv
 requests
+sqlalchemy
+pydantic
+pydantic-settings
+APScheduler
