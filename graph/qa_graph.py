@@ -1,8 +1,8 @@
 # graph/qa_graph.py - LangGraph QA Agent Graph (Agent Architect Role)
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain_core.prompts import PromptTemplate
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from agents.tools import run_tinyfish_qa, check_url_health, save_qa_result, send_slack_alert
 from graph.state import QAState
@@ -31,29 +31,16 @@ Your job is to:
 5. If status is FAILED and severity is HIGH or MEDIUM, send a Slack alert using send_slack_alert
 
 Always be systematic. Report step by step what you are doing.
-For severity assessment: HIGH = critical feature broken, MEDIUM = degraded functionality, LOW = minor issues.
+For severity assessment: HIGH = critical feature broken, MEDIUM = degraded functionality, LOW = minor issues."""
 
-You have access to the following tools:
-{tools}
-
-Use the following format:
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-
-Begin!
-
-Question: {input}
-Thought:{agent_scratchpad}"""
-
-prompt = PromptTemplate.from_template(SYSTEM_PROMPT)
+prompt = ChatPromptTemplate.from_messages([
+    ("system", SYSTEM_PROMPT),
+    ("human", "{input}"),
+    MessagesPlaceholder(variable_name="agent_scratchpad"),
+])
 
 # ----- Create Agent -----
-agent = create_react_agent(llm, tools, prompt)
+agent = create_tool_calling_agent(llm, tools, prompt)
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
