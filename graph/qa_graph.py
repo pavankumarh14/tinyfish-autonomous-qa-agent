@@ -1,7 +1,7 @@
 # graph/qa_graph.py - LangGraph QA Agent Graph (Agent Architect Role)
 from langgraph.graph import StateGraph, END
-from langchain_openai import ChatOpenAI
-from langchain.agents import create_openai_tools_agent, AgentExecutor
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from agents.tools import run_tinyfish_qa, check_url_health, save_qa_result, send_slack_alert
@@ -10,9 +10,10 @@ from config import settings
 from datetime import datetime
 import json
 
-# ---- LLM Setup ----
-llm = ChatOpenAI(
-    model=settings.OPENAI_MODEL,
+# ---- LLM Setup (Google Gemini - FREE) ----
+llm = ChatGoogleGenerativeAI(
+    model=settings.GEMINI_MODEL,
+    google_api_key=settings.GOOGLE_API_KEY,
     temperature=0,
     streaming=True
 )
@@ -40,7 +41,7 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 # ---- Agent ----
-agent = create_openai_tools_agent(llm, tools, prompt)
+agent = create_tool_calling_agent(llm, tools, prompt)
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
@@ -48,6 +49,7 @@ agent_executor = AgentExecutor(
     return_intermediate_steps=True,
     max_iterations=10
 )
+
 
 # ---- Graph Nodes ----
 def validate_input(state: QAState) -> QAState:
@@ -63,79 +65,90 @@ def validate_input(state: QAState) -> QAState:
 
 
 def run_agent(state: QAState) -> QAState:
-    """Node 2: Run the LangChain agent with TinyFish tools"""
+    """Node 2: Run the LangChain Agent with TinyFish tools"""
     if state.get("status") == "FAILED":
         return state
 
-    try:
-        user_input = f"""Run QA check for the following:
-- URL: {state['url']}
-- Workflow: {state['workflow_name']}
-- Goal: {state['goal']}
-- Schedule: {state['schedule']}
+    state["steps"].append("Starting LangGraph agent with TinyFish tools...")
 
-Please check health, run QA, save result, and alert if needed."""
+    try:
+        user_message = f"""
+        Run a complete QA check:
+        - Workflow: {state['workflow_name']}
+        - URL: {state['url']}
+        - Goal: {state['goal']}
+
+        First check if URL is reachable, then run the full QA test,
+        save the result, and alert if failed.
+        """
 
         result = agent_executor.invoke({
-            "input": user_input,
+            "input": user_message,
             "chat_history": []
         })
 
         state["agent_output"] = result.get("output", "")
-        state["steps"].extend([
-            step[0].log for step in result.get("intermediate_steps", [])
-            if hasattr(step[0], "log")
-        ])
-        state["status"] = "COMPLETED"
+        state["intermediate_steps"] = [
+            {"tool": step[0].tool, "output": str(step[1])}
+            for step in result.get("intermediate_steps", [])
+        ]
+
+        # Parse status from output
+        output_lower = state["agent_output"].lower()
+        if "pass" in output_lower or "success" in output_lower:
+            state["status"] = "PASSED"
+        elif "fail" in output_lower or "error" in output_lower:
+            state["status"] = "FAILED"
+        else:
+            state["status"] = "COMPLETED"
 
     except Exception as e:
-        state["status"] = "FAILED"
+        state["status"] = "ERROR"
         state["error"] = str(e)
+        state["agent_output"] = f"Agent execution error: {str(e)}"
 
     return state
 
 
 def finalize(state: QAState) -> QAState:
-    """Node 3: Finalize and prepare summary"""
+    """Node 3: Finalize the run - mark complete and record duration"""
     state["completed_at"] = datetime.utcnow().isoformat()
-    if state["status"] == "COMPLETED":
-        state["steps"].append("QA workflow completed successfully.")
-    else:
-        state["steps"].append(f"QA workflow ended with status: {state['status']}")
+    if state.get("started_at"):
+        try:
+            start = datetime.fromisoformat(state["started_at"])
+            end = datetime.fromisoformat(state["completed_at"])
+            state["duration_seconds"] = (end - start).total_seconds()
+        except Exception:
+            state["duration_seconds"] = 0.0
+
+    state["steps"].append(f"QA workflow completed with status: {state['status']}")
     return state
 
 
 def should_continue(state: QAState) -> str:
-    """Edge condition: decide next node"""
+    """Conditional edge: if input validation failed, skip to finalize"""
     if state.get("status") == "FAILED" and state.get("error"):
         return "finalize"
     return "run_agent"
 
 
-# ---- Build Graph ----
-def build_qa_graph() -> StateGraph:
-    graph = StateGraph(QAState)
+# ---- Build LangGraph ----
+workflow = StateGraph(QAState)
 
-    graph.add_node("validate_input", validate_input)
-    graph.add_node("run_agent", run_agent)
-    graph.add_node("finalize", finalize)
+workflow.add_node("validate_input", validate_input)
+workflow.add_node("run_agent", run_agent)
+workflow.add_node("finalize", finalize)
 
-    graph.set_entry_point("validate_input")
+workflow.set_entry_point("validate_input")
+workflow.add_conditional_edges(
+    "validate_input",
+    should_continue,
+    {
+        "run_agent": "run_agent",
+        "finalize": "finalize"
+    }
+)
+workflow.add_edge("run_agent", "finalize")
+workflow.add_edge("finalize", END)
 
-    graph.add_conditional_edges(
-        "validate_input",
-        should_continue,
-        {
-            "run_agent": "run_agent",
-            "finalize": "finalize"
-        }
-    )
-
-    graph.add_edge("run_agent", "finalize")
-    graph.add_edge("finalize", END)
-
-    return graph.compile()
-
-
-# Compiled graph instance
-qa_graph = build_qa_graph()
+qa_graph = workflow.compile()
