@@ -78,8 +78,20 @@ def save_qa_result(url: str, goal: str, status: str, agent_output: str, steps: s
     Call this after run_tinyfish_qa to persist results.
     """
     try:
-        db = next(get_db())
         import json
+        # Ensure agent_output is a string (handle dict/list inputs)
+        if isinstance(agent_output, (dict, list)):
+            agent_output = json.dumps(agent_output)
+        elif not isinstance(agent_output, str):
+            agent_output = str(agent_output)
+        
+        # Ensure steps is a string
+        if isinstance(steps, list):
+            steps = json.dumps(steps)
+        elif not isinstance(steps, str):
+            steps = str(steps)
+
+        db = next(get_db())
         qa_result = create_qa_result(
             db=db,
             workflow_name=workflow_name,
