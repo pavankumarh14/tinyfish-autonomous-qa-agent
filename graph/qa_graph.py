@@ -79,14 +79,20 @@ Current time: {datetime.now().isoformat()}"""
 
         state["status"] = status
         state["severity"] = severity
-        state["result"] = output
+        state["agent_output"] = output
         state["error"] = None
+        state["started_at"] = datetime.now().isoformat()
+        state["completed_at"] = datetime.now().isoformat()
+        state["steps_taken"] = []
 
     except Exception as e:
         state["status"] = "ERROR"
         state["severity"] = "HIGH"
         state["result"] = ""
         state["error"] = str(e)
+        state["started_at"] = datetime.now().isoformat()
+        state["completed_at"] = datetime.now().isoformat()
+        state["steps_taken"] = []
 
     return state
 
@@ -102,7 +108,7 @@ def send_alert_node(state: QAState) -> QAState:
     """Send Slack alert for failed tests"""
     try:
         send_slack_alert.invoke({
-            "message": f"QA FAILED for {state['url']}: {state.get('result', '')[:500]}",
+            "message": f"QA FAILED for {state['url']}: {state.get('agent_output', '')[:500]}",
             "severity": state.get("severity", "HIGH")
         })
     except Exception as e:
