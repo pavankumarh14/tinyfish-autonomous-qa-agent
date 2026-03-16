@@ -10,3 +10,5 @@ sqlalchemy
 pydantic
 pydantic-settings
 APScheduler
+
+psycopg2-binary
