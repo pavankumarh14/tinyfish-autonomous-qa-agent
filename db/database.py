@@ -1,58 +1,101 @@
 # db/database.py
-# SQLite storage for QA results
+# SQLAlchemy ORM - supports both SQLite (local) and PostgreSQL (Render)
 
-import sqlite3
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime
+from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
+from config import settings
+import os
 
-DB_PATH = "qa_results.db"
+# ---- Fix for Render PostgreSQL URL ----
+# Render provides postgres:// but SQLAlchemy requires postgresql://
+DATABASE_URL = settings.DATABASE_URL
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# ---- SQLAlchemy Engine ----
+# SQLite needs check_same_thread=False, PostgreSQL doesn't need it
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False}
+    )
+else:
+    engine = create_engine(DATABASE_URL)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+# ---- ORM Model ----
+class QAResult(Base):
+    __tablename__ = "qa_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workflow_id = Column(String, index=True)
+    workflow_name = Column(String)
+    url = Column(String)
+    goal = Column(Text)
+    status = Column(String)          # PASSED / FAILED / ERROR
+    agent_output = Column(Text)
+    steps = Column(Text)             # JSON string
+    duration_seconds = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---- Create tables on startup ----
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS results (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            workflow_id TEXT,
-            workflow_name TEXT,
-            url TEXT,
-            status TEXT,
-            message TEXT,
-            analysis TEXT,
-            severity TEXT,
-            recommendation TEXT,
-            duration_seconds INTEGER,
-            timestamp TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+    Base.metadata.create_all(bind=engine)
 
-def save_result(result: dict):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        INSERT INTO results
-        (workflow_id, workflow_name, url, status, message,
-         analysis, severity, recommendation, duration_seconds, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        result.get("workflow_id"),
-        result.get("workflow_name"),
-        result.get("url"),
-        result.get("status"),
-        result.get("message"),
-        result.get("analysis"),
-        result.get("severity"),
-        result.get("recommendation"),
-        result.get("duration_seconds", 0),
-        result.get("timestamp", datetime.now().isoformat())
-    ))
-    conn.commit()
-    conn.close()
 
-def get_all_results():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT * FROM results ORDER BY id DESC LIMIT 50"
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+# ---- Dependency: get DB session ----
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# ---- CRUD Operations ----
+def create_qa_result(
+    db,
+    workflow_name: str,
+    url: str,
+    goal: str,
+    status: str,
+    agent_output: str,
+    steps: str,
+    duration_seconds: float = 0.0,
+    workflow_id: str = ""
+):
+    """Save a QA run result to the database."""
+    record = QAResult(
+        workflow_id=workflow_id,
+        workflow_name=workflow_name,
+        url=url,
+        goal=goal,
+        status=status,
+        agent_output=agent_output,
+        steps=steps,
+        duration_seconds=duration_seconds,
+        created_at=datetime.utcnow()
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def get_all_results(db, limit: int = 50):
+    """Fetch last N QA results ordered by most recent."""
+    return db.query(QAResult).order_by(QAResult.id.desc()).limit(limit).all()
+
+
+def get_results_by_status(db, status: str):
+    """Fetch results filtered by status (PASSED/FAILED/ERROR)."""
+    return db.query(QAResult).filter(QAResult.status == status).order_by(QAResult.id.desc()).all()
+
+
+# Auto-initialize tables when module is imported
+init_db()
