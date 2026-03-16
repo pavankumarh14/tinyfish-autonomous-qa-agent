@@ -104,7 +104,7 @@ with tab1:
                     "steps": [],
                     "agent_output": "",
                     "error": None,
-                    "started_at": None,
+                    "started_at": datetime.now().isoformat(),
                     "completed_at": None
                 }
 
@@ -132,8 +132,10 @@ with tab1:
                         st.error(f"Error: {result['error']}")
 
                     st.markdown("#### Agent Output")
-                    st.info(result.get("agent_output", "No output"))
-
+                    # Check both field names for backward compatibility
+                    output_text = result.get("agent_output") or result.get("result", "No output")
+                    st.info(output_text)
+                    
                     st.markdown("#### Steps Taken")
                     for i, step in enumerate(result.get("steps", []), 1):
                         st.markdown(f"{i}. {step}")
