@@ -72,21 +72,23 @@ def run_tinyfish_qa(url: str, goal: str) -> dict:
 
 
 @tool
-def save_qa_result(url: str, goal: str, status: str, result_json: str, steps_taken: int, duration_ms: float) -> dict:
+def save_qa_result(url: str, goal: str, status: str, agent_output: str, steps: str, duration_seconds: float, workflow_name: str = "") -> dict:
     """
     Saves QA result to the PostgreSQL database.
     Call this after run_tinyfish_qa to persist results.
     """
     try:
         db = next(get_db())
+        import json
         qa_result = create_qa_result(
             db=db,
+            workflow_name=workflow_name,
             url=url,
             goal=goal,
             status=status,
-            result_json=result_json,
-            steps_taken=steps_taken,
-            duration_ms=duration_ms
+            agent_output=agent_output,
+            steps=steps,
+            duration_seconds=duration_seconds
         )
         return {
             "saved": True,
