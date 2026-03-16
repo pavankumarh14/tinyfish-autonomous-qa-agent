@@ -115,7 +115,7 @@ with tab1:
                     st.markdown("### Results")
 
                     status = result.get("status", "UNKNOWN")
-                    if status == "COMPLETED":
+                    if status in ["COMPLETED", "PASSED"]:
                         st.success(f"✅ Status: {status}")
                     elif status == "FAILED":
                         st.error(f"❌ Status: {status}")
@@ -137,8 +137,13 @@ with tab1:
                     st.info(output_text)
                     
                     st.markdown("#### Steps Taken")
-                    for i, step in enumerate(result.get("steps", []), 1):
-                        st.markdown(f"{i}. {step}")
+                    steps_list = result.get("steps_taken") or result.get("steps", [])
+                    if steps_list:
+                        for i, step in enumerate(steps_list, 1):
+                            st.markdown(f"{i}. {step}")
+                    else:
+                        st.markdown("*No steps recorded*")
+
 
                 except Exception as e:
                     st.error(f"Agent error: {str(e)}")
