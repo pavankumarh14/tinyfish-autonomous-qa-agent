@@ -43,7 +43,8 @@ agent_executor = AgentExecutor(
     tools=tools,
     verbose=False,
     handle_parsing_errors=True,
-    max_iterations=10
+    max_iterations=10,
+    return_intermediate_steps=True
 )
 
 # ----- LangGraph Node Functions -----
@@ -59,6 +60,13 @@ Current time: {datetime.now().isoformat()}"""
     try:
         result = agent_executor.invoke({"input": query})
         output = result.get("output", "No output") if result else "No output"
+        # Extract intermediate steps
+        steps_taken = []
+        if result and "intermediate_steps" in result:
+            for action, observation in result["intermediate_steps"]:
+                steps_taken.append(f"Tool: {action.tool} - {action.tool_input}")
+                if observation:
+                    steps_taken.append(f"Result: {str(observation)[:200]}")
 
         # Parse status from output
         output_upper = output.upper()
@@ -83,7 +91,9 @@ Current time: {datetime.now().isoformat()}"""
         state["error"] = None
         state["started_at"] = datetime.now().isoformat()
         state["completed_at"] = datetime.now().isoformat()
-        state["steps_taken"] = []
+        state["steps_taken"] = steps_taken if steps_taken else ["Agent completed QA workflow"]
+        state["steps"] = steps_taken if steps_taken else ["Agent completed QA workflow"]
+
 
     except Exception as e:
         state["status"] = "ERROR"
