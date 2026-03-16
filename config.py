@@ -1,6 +1,36 @@
 # config.py
-# QA Workflow Definitions - Target websites for monitoring
+# QA Workflow Definitions + App Settings
 
+from pydantic_settings import BaseSettings
+from typing import Optional
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Settings(BaseSettings):
+    # TinyFish API (REQUIRED)
+    TINYFISH_API_KEY: str = os.getenv("TINYFISH_API_KEY", "")
+
+    # Google Gemini API (FREE - get from https://aistudio.google.com/app/apikey)
+    GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+    # Database
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./qa_results.db")
+
+    # Slack (optional)
+    SLACK_WEBHOOK_URL: Optional[str] = os.getenv("SLACK_WEBHOOK_URL", None)
+
+    class Config:
+        env_file = ".env"
+        extra = "allow"
+
+
+settings = Settings()
+
+# ---- QA Workflow Definitions - Target websites for monitoring ----
 WORKFLOWS = [
     {
         "id": "login-check",
