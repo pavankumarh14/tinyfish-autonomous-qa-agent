@@ -1,0 +1,25 @@
+# render.yaml - Render.com Deployment Config (Free Tier)
+# Docs: https://render.com/docs/infrastructure-as-code
+
+services:
+  - type: web
+    name: tinyfish-qa-agent
+    env: python
+    region: singapore   # Closest free region to India
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false
+    healthCheckPath: /
+    envVars:
+      - key: TINYFISH_API_KEY
+        sync: false        # Set manually in Render dashboard
+      - key: GOOGLE_API_KEY
+        sync: false        # Set manually in Render dashboard
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: DATABASE_URL
+        value: sqlite:///./qa_results.db
+      - key: SLACK_WEBHOOK_URL
+        value: ""          # Optional - leave blank if not using Slack
+      - key: PYTHON_VERSION
+        value: 3.11.0
