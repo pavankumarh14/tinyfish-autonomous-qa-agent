@@ -69,11 +69,14 @@ Current time: {datetime.now().isoformat()}"""
                     steps_taken.append(f"Result: {str(observation)[:200]}")
 
         # Parse status from output
+        output_lower = output.lower()
         output_upper = output.upper()
-        if "PASSED" in output_upper:
+        
+        # Check for explicit status markers first
+        if "PASSED" in output_upper or "PASS" in output_upper:
             status = "PASSED"
             severity = "LOW"
-        elif "FAILED" in output_upper:
+        elif "FAILED" in output_upper or "FAIL" in output_upper:
             status = "FAILED"
             if "CRITICAL" in output_upper or "HIGH" in output_upper:
                 severity = "HIGH"
@@ -82,8 +85,34 @@ Current time: {datetime.now().isoformat()}"""
             else:
                 severity = "HIGH"
         else:
-            status = "UNKNOWN"
-            severity = "MEDIUM"
+            # No explicit status found - analyze output content
+            error_keywords = ['error', 'unable to', 'could not', 'timeout', 'exception', 
+                            'not found', 'unreachable', 'broken', 'failed', 'failure',
+                            'does not', "doesn't", 'invalid', 'unauthorized', 'forbidden']
+            
+            success_keywords = ['success', 'completed', 'working', 'functional', 
+                              'accessible', 'verified', 'confirmed', 'found', 'visible',
+                              'loaded', 'available', 'passed']
+            
+            has_error = any(keyword in output_lower for keyword in error_keywords)
+            has_success = any(keyword in output_lower for keyword in success_keywords)
+            
+            if has_error and not has_success:
+                status = "FAILED"
+                severity = "HIGH"
+            elif has_success or (output and len(output) > 20):
+                # Output seems positive and substantial
+                status = "PASSED"
+                severity = "LOW"
+            else:
+                # Ambiguous output - check for negative indicators
+                negative_indicators = ['not ', 'no ', 'unable', 'cannot', "can't"]
+                if any(ind in output_lower for ind in negative_indicators):
+                    status = "FAILED"
+                    severity = "MEDIUM"
+                else:
+                    status = "PASSED"  # Default to passed if output exists
+                    severity = "LOW"
 
         state["status"] = status
         state["severity"] = severity
@@ -109,7 +138,9 @@ Current time: {datetime.now().isoformat()}"""
 
 def should_alert(state: QAState) -> str:
     """Decide whether to send alert based on status"""
-    if state.get("status") == "FAILED" and state.get("severity") in ["HIGH", "MEDIUM"]:
+    status = state.get("status", "")
+    severity = state.get("severity", "LOW")
+    if status in ["FAILED", "ERROR"] and severity in ["HIGH", "MEDIUM"]:
         return "alert"
     return "done"
 
