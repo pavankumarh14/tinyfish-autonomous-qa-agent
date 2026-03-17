@@ -119,6 +119,8 @@ with tab1:
                         st.success(f"✅ Status: {status}")
                     elif status == "FAILED":
                         st.error(f"❌ Status: {status}")
+                    elif status == "ERROR":
+                        st.error(f"🚨 Status: {status}")
                     else:
                         st.warning(f"⚠️ Status: {status}")
 
