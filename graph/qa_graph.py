@@ -7,6 +7,7 @@ from agents.tools import run_tinyfish_qa, check_url_health, save_qa_result, send
 from graph.state import QAState
 from config import settings
 from datetime import datetime
+from db.database import get_db
 
 # ----- LLM Setup (Google Gemini - FREE) -----
 llm = ChatGoogleGenerativeAI(
