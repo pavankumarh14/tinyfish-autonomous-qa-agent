@@ -127,11 +127,12 @@ Current time: {datetime.now().isoformat()}"""
     except Exception as e:
         state["status"] = "ERROR"
         state["severity"] = "HIGH"
-        state["result"] = ""
+        state["agent_output"] = ""
         state["error"] = str(e)
         state["started_at"] = datetime.now().isoformat()
         state["completed_at"] = datetime.now().isoformat()
         state["steps_taken"] = []
+        state["steps"] = []
 
     return state
 
