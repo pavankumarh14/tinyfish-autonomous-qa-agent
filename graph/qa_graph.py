@@ -156,6 +156,45 @@ def send_alert_node(state: QAState) -> QAState:
         state["error"] = f"Alert failed: {str(e)}"
     return state
 
+def save_results_node(state: QAState) -> QAState:
+    """Save results to database"""
+    try:
+        from datetime import datetime
+        db = next(get_db())
+        import json
+        
+        # Calculate duration if timestamps exist
+        duration = 0
+        if state.get("started_at") and state.get("completed_at"):
+            try:
+                start = datetime.fromisoformat(state["started_at"])
+                end = datetime.fromisoformat(state["completed_at"])
+                duration = (end - start).total_seconds()
+            except:
+                pass
+        
+        # Ensure steps is a string
+        steps = state.get("steps_taken", [])
+        if isinstance(steps, list):
+            steps = json.dumps(steps)
+        
+        create_qa_result(
+            db=db,
+            workflow_name=state.get("workflow_name", ""),
+            url=state["url"],
+            goal=state["goal"],
+            status=state.get("status", "UNKNOWN"),
+            agent_output=state.get("agent_output", ""),
+            steps=steps,
+            duration_seconds=duration,
+            workflow_id=state.get("workflow_id", "")
+        )
+    except Exception as e:
+        state["error"] = f"DB save failed: {str(e)}"
+    
+    return state
+
+
 
 # ----- Build LangGraph -----
 def build_qa_graph():
@@ -163,14 +202,18 @@ def build_qa_graph():
 
     # Add nodes
     workflow.add_node("qa_agent", run_qa_agent)
+    workflow.add_node("save_results", save_results_node)
     workflow.add_node("send_alert", send_alert_node)
 
     # Set entry point
     workflow.set_entry_point("qa_agent")
+    
+    # Always save results after agent runs
+    workflow.add_edge("qa_agent", "save_results")
 
-    # Add conditional edges
+    # Add conditional edges from save to alert
     workflow.add_conditional_edges(
-        "qa_agent",
+        "save_results",
         should_alert,
         {
             "alert": "send_alert",
