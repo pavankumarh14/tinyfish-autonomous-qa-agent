@@ -163,28 +163,47 @@ with tab2:
             st.info("No QA runs yet. Run your first check in the 'Run QA Check' tab.")
         else:
             for r in reversed(results):
+                # Handle status icon
+                status_icon = "✅" if r.status in ['COMPLETED', 'PASSED'] else "❌" if r.status == 'FAILED' else "⚠️"
+                
                 with st.expander(
-                    f"{'✅' if r.status == 'COMPLETED' else '❌'} "
-                    f"{r.workflow_name} | {r.url} | {r.created_at}"
+                    f"{status_icon} "
+                    f"{getattr(r, 'workflow_name', 'Unnamed')} | {getattr(r, 'url', 'No URL')} | {r.created_at}"
                 ):
                     col1, col2, col3 = st.columns(3)
                     col1.metric("Status", r.status)
                     col2.metric("URL", r.url[:30] + "..." if len(r.url) > 30 else r.url)
                     col3.metric("Duration", f"{r.duration_seconds:.1f}s" if r.duration_seconds else "N/A")
 
-                    if r.agent_output:
+                    # Safely get agent_output
+                    agent_output = getattr(r, 'agent_output', None) or getattr(r, 'result', None)
+                    if agent_output:
                         st.markdown("**Agent Output:**")
-                        st.info(r.agent_output)
+                        st.info(agent_output)
 
-                    if r.steps:
+                    # Safely get and parse steps
+                    steps_data = getattr(r, 'steps', None) or getattr(r, 'steps_taken', None)
+                    if steps_data:
                         st.markdown("**Steps:**")
                         import json
-                        steps = json.loads(r.steps) if isinstance(r.steps, str) else r.steps
-                        for i, step in enumerate(steps, 1):
-                            st.markdown(f"{i}. {step}")
+                        try:
+                            if isinstance(steps_data, str):
+                                steps = json.loads(steps_data)
+                            else:
+                                steps = steps_data
+                            if isinstance(steps, list):
+                                for i, step in enumerate(steps, 1):
+                                    st.markdown(f"{i}. {step}")
+                            else:
+                                st.markdown(f"1. {steps}")
+                        except (json.JSONDecodeError, TypeError):
+                            # If JSON parsing fails, show as string
+                            st.markdown(f"1. {str(steps_data)[:200]}")
 
     except Exception as e:
-        st.warning(f"Could not load history: {str(e)}")
+        st.error(f"Could not load history: {str(e)}")
+        st.info("Try running a test first to initialize the database.")
+
 
 # ---- Tab 3: About ----
 with tab3:
