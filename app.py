@@ -251,11 +251,6 @@ with tab1:
                     st.caption(f"Run ID: `{result.get('run_id', 'N/A')}`")
 
 
-
-
-                except Exception as e:
-                    st.error(f"Agent error: {str(e)}")
-
 # ---- Tab 2: History ----
 with tab2:
     st.subheader("QA Run History")
