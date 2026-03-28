@@ -13,3 +13,7 @@ pydantic>=2.0
 pydantic-settings>=2.0
 APScheduler>=3.10
 psycopg2-binary
+# Multi-Provider LLM Support (FREE options)
+langchain-openai>=0.1.0      # OpenAI GPT (free tier)
+langchain-groq>=0.1.0        # Groq - very fast, generous free tier
+langchain-ollama>=0.1.0      # Ollama - completely free, runs locally
