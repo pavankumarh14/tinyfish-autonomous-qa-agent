@@ -11,15 +11,45 @@ services:
     startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false
     healthCheckPath: /
     envVars:
+      # LLM Provider Selection
+      - key: LLM_PROVIDER
+        value: google  # Options: google, openai, groq, ollama
+      
+      # TinyFish (Required)
       - key: TINYFISH_API_KEY
-        sync: false        # Set manually in Render dashboard
+        sync: false
+      
+      # Google Gemini (Default)
       - key: GOOGLE_API_KEY
-        sync: false        # Set manually in Render dashboard
+        sync: false
       - key: GEMINI_MODEL
-        value: gemini-2.0-flash
+        value: gemini-2.5-flash
+      
+      # OpenAI (Optional)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-3.5-turbo
+      
+      # Groq (Optional - FAST!)
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.1-70b-versatile
+      
+      # Ollama (Optional - Local)
+      - key: OLLAMA_BASE_URL
+        value: http://localhost:11434
+      - key: OLLAMA_MODEL
+        value: llama3.1
+      
+      # Database & Slack
       - key: DATABASE_URL
-        value: sqlite:///./qa_results.db
+        fromDatabase:
+          name: qa-agent-db
+          property: connectionString
       - key: SLACK_WEBHOOK_URL
-        value: ""          # Optional - leave blank if not using Slack
-      - key: PYTHON_VERSION
-        value: 3.11.0
+        sync: false
+
+
+        
