@@ -4,7 +4,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from agents.tools import run_tinyfish_qa, check_url_health, save_qa_result, send_slack_alert, get_live_preview_url
-from agents.tools import run_tinyfish_qa, check_url_health, save_qa_result, send_slack_alert
 from graph.state import QAState
 from config import settings
 from datetime import datetime
