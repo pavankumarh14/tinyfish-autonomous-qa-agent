@@ -5,6 +5,8 @@ from datetime import datetime
 from graph.qa_graph import qa_graph
 from db.database import get_all_results, get_db
 from graph.state import QAState
+from config import settings
+
 
 # ---- Page Config ----
 st.set_page_config(
@@ -21,7 +23,7 @@ st.divider()
 # ---- Sidebar: Configuration ----
 st.sidebar.header("⚙️ Configuration")
 st.sidebar.info(
-    "This agent uses TinyFish to browse your web app, "
+    "This agent uses TinyFish to browse your web app with LIVE streaming, "
     "LangGraph to orchestrate the QA workflow, and "
     "LangChain tools to check, test, and alert."
 )
@@ -46,6 +48,34 @@ with st.sidebar:
     [Slack Alert?]
     ```
     """)
+
+    st.divider()
+    st.subheader("🤖 LLM Provider")
+    
+    # Display current LLM provider with icon
+    provider = settings.LLM_PROVIDER
+    provider_icons = {
+        "google": "🔮 Google Gemini",
+        "openai": "🤖 OpenAI GPT",
+        "groq": "⚡ Groq",
+        "ollama": "🏠 Ollama (Local)"
+    }
+    provider_display = provider_icons.get(provider, f"🤖 {provider.title()}")
+    
+    st.success(f"**Active:** {provider_display}")
+    
+    # Show model name
+    if provider == "google":
+        st.caption(f"Model: `{settings.GEMINI_MODEL}`")
+    elif provider == "openai":
+        st.caption(f"Model: `{settings.OPENAI_MODEL}`")
+    elif provider == "groq":
+        st.caption(f"Model: `{settings.GROQ_MODEL}`")
+    elif provider == "ollama":
+        st.caption(f"Model: `{settings.OLLAMA_MODEL}`")
+    
+    st.info("💡 Configure in `.env` file with `LLM_PROVIDER`")
+
 
 # ---- Tabs ----
 tab1, tab2, tab3 = st.tabs(["▶️ Run QA Check", "📊 QA History", "📖 About"])
@@ -145,6 +175,17 @@ with tab1:
                             st.markdown(f"{i}. {step}")
                     else:
                         st.markdown("*No steps recorded*")
+                                        
+                    # Show Live Browser Preview URL if available
+                    streaming_url = result.get("streaming_url")
+                    if streaming_url:
+                        st.markdown("---")
+                        st.markdown("### 🔴 Live Browser Preview")
+                        st.caption("Watch the automation execute in real-time:")
+                        st.link_button("🔗 Open Live Preview", streaming_url, type="primary")
+                        st.caption(f"Run ID: `{result.get('run_id', 'N/A')}`")
+                        st.markdown("---")
+
 
 
                 except Exception as e:
