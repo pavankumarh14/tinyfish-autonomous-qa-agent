@@ -15,6 +15,14 @@ An **Autonomous Web QA Agent** that:
 - Uses **LangGraph** to orchestrate a multi-node QA decision workflow
 - Uses **LangChain** tools to check health, run tests, save results, and fire Slack alerts
 - Displays everything in a clean **Streamlit** dashboard with real-time results and history
+  
+## Business Value Example
+
+**Problem**: An e-commerce site's checkout button stopped working after a deployment. 
+It took 6 hours to discover, costing $50,000 in lost sales.
+
+**Solution**: This agent runs every 15 minutes, executing a full checkout workflow. 
+It caught the issue in 15 minutes and alerted the team via Slack.
 
 ## Architecture Flow
 
