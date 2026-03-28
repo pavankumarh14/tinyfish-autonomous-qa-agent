@@ -7,6 +7,9 @@ from langchain_core.tools import tool
 from tinyfish import TinyFish, RunStatus, ProgressEvent, CompleteEvent
 from config import settings
 from db.database import get_db, create_qa_result
+import queue
+# Global queue for streaming URL communication between tool and UI
+streaming_url_queue: queue.Queue = queue.Queue()
 
 # ---- TinyFish Client ----
 tinyfish_client = TinyFish(api_key=settings.TINYFISH_API_KEY)
@@ -65,6 +68,13 @@ def run_tinyfish_qa(url: str, goal: str) -> dict:
                 if hasattr(event, 'streaming_url') and event.streaming_url:
                     result["streaming_url"] = event.streaming_url
                     result["steps"].append(f"🔴 LIVE PREVIEW: {event.streaming_url}")
+                    
+                    # 🆕 SEND TO QUEUE for immediate UI display
+                    streaming_url_queue.put({
+                        "streaming_url": event.streaming_url,
+                        "run_id": result["run_id"],
+                        "timestamp": datetime.now().isoformat()
+                    })
                 
                 # Capture progress updates
                 if isinstance(event, ProgressEvent):
@@ -90,6 +100,7 @@ def run_tinyfish_qa(url: str, goal: str) -> dict:
 
     result["duration_ms"] = round((datetime.now() - start_time).total_seconds() * 1000, 2)
     return result
+
 
 
 @tool
