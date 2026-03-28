@@ -13,9 +13,24 @@ class Settings(BaseSettings):
     # TinyFish API (REQUIRED)
     TINYFISH_API_KEY: str = os.getenv("TINYFISH_API_KEY", "")
 
-    # Google Gemini API (FREE - get from https://aistudio.google.com/app/apikey)
+    # LLM Provider Selection (google, openai, groq, ollama)
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "google")
+    
+    # Google Gemini API (FREE - 20 requests/day) https://aistudio.google.com/app/apikey
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    
+    # OpenAI API (FREE tier available) https://platform.openai.com
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+    
+    # Groq API (FREE - very fast!) https://console.groq.com
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+    
+    # Ollama (FREE - runs locally) https://ollama.com
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.1")
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./qa_results.db")
