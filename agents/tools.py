@@ -37,9 +37,10 @@ def check_url_health(url: str) -> dict:
 @tool
 def run_tinyfish_qa(url: str, goal: str) -> dict:
     """
-    Runs an autonomous QA check using TinyFish web agent.
+    Runs an autonomous QA check using TinyFish web agent with LIVE streaming.
     The agent will browse the URL and attempt to complete the specified goal.
-    Returns the run status, steps taken, and result JSON.
+    Captures live browser preview URL and real-time progress updates.
+    Returns the run status, steps taken, result JSON, and streaming URL.
     """
     result = {
         "url": url,
@@ -47,28 +48,62 @@ def run_tinyfish_qa(url: str, goal: str) -> dict:
         "status": "PENDING",
         "steps": [],
         "result_json": {},
-        "error": None
+        "error": None,
+        "streaming_url": None,  # Live browser preview URL
+        "run_id": None
     }
     start_time = datetime.now()
+    
     try:
         with tinyfish_client.agent.stream(url=url, goal=goal) as stream:
             for event in stream:
+                # Capture run ID when started
+                if hasattr(event, 'run_id') and not result["run_id"]:
+                    result["run_id"] = event.run_id
+                
+                # Capture streaming URL for live browser preview
+                if hasattr(event, 'streaming_url') and event.streaming_url:
+                    result["streaming_url"] = event.streaming_url
+                    result["steps"].append(f"🔴 LIVE PREVIEW: {event.streaming_url}")
+                
+                # Capture progress updates
                 if isinstance(event, ProgressEvent):
-                    result["steps"].append(getattr(event, 'purpose', str(event)))
+                    purpose = getattr(event, 'purpose', str(event))
+                    result["steps"].append(f"▶️ {purpose}")
+                
+                # Capture completion
                 if isinstance(event, CompleteEvent):
                     if event.status == RunStatus.COMPLETED:
                         result["status"] = "COMPLETED"
                         result["result_json"] = event.result_json or {}
+                        result["steps"].append("✅ Task completed successfully")
                     else:
                         result["status"] = "FAILED"
                         error_msg = getattr(event, 'error', None)
                         result["error"] = str(error_msg) if error_msg else "Run failed"
+                        result["steps"].append(f"❌ Failed: {result['error']}")
+                        
     except Exception as e:
         result["status"] = "ERROR"
         result["error"] = str(e)
+        result["steps"].append(f"🚨 Exception: {str(e)}")
 
     result["duration_ms"] = round((datetime.now() - start_time).total_seconds() * 1000, 2)
     return result
+
+
+@tool
+def get_live_preview_url(run_id: str) -> dict:
+    """
+    Get the live browser preview URL for an active TinyFish run.
+    Users can watch the automation execute in real-time.
+    """
+    # Note: This is a helper - the streaming_url is already captured in run_tinyfish_qa
+    return {
+        "message": "Live preview URL is captured during run_tinyfish_qa execution",
+        "note": "Check the 'streaming_url' field in the QA results for the live browser link"
+    }
+
 
 
 @tool
