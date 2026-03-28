@@ -3,20 +3,70 @@ from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from agents.tools import run_tinyfish_qa, check_url_health, save_qa_result, send_slack_alert, get_live_preview_url
 from agents.tools import run_tinyfish_qa, check_url_health, save_qa_result, send_slack_alert
 from graph.state import QAState
 from config import settings
 from datetime import datetime
 from db.database import get_db, create_qa_result
+from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
+from langchain_ollama import ChatOllama
 
 
-# ----- LLM Setup (Google Gemini - FREE) -----
-llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    google_api_key=settings.GOOGLE_API_KEY,
-    temperature=0,
-    streaming=False
-)
+
+def get_llm():
+    """Factory function to get LLM based on settings.LLM_PROVIDER"""
+    provider = settings.LLM_PROVIDER.lower()
+    
+    if provider == "google":
+        print(f"🤖 Using Google Gemini: {settings.GEMINI_MODEL}")
+        return ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL,
+            google_api_key=settings.GOOGLE_API_KEY,
+            temperature=0,
+            streaming=False
+        )
+    
+    elif provider == "openai":
+        print(f"🤖 Using OpenAI: {settings.OPENAI_MODEL}")
+        return ChatOpenAI(
+            model=settings.OPENAI_MODEL,
+            api_key=settings.OPENAI_API_KEY,
+            temperature=0,
+            streaming=False
+        )
+    
+    elif provider == "groq":
+        print(f"🤖 Using Groq: {settings.GROQ_MODEL}")
+        return ChatGroq(
+            model=settings.GROQ_MODEL,
+            api_key=settings.GROQ_API_KEY,
+            temperature=0,
+            streaming=False
+        )
+    
+    elif provider == "ollama":
+        print(f"🤖 Using Ollama (Local): {settings.OLLAMA_MODEL}")
+        return ChatOllama(
+            model=settings.OLLAMA_MODEL,
+            base_url=settings.OLLAMA_BASE_URL,
+            temperature=0
+        )
+    
+    else:
+        print(f"⚠️ Unknown provider '{provider}', falling back to Google Gemini")
+        return ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL,
+            google_api_key=settings.GOOGLE_API_KEY,
+            temperature=0,
+            streaming=False
+        )
+
+
+# ----- LLM Setup (Configurable Multi-Provider) -----
+llm = get_llm()
+
 
 # ----- Tools list -----
 tools = [run_tinyfish_qa, check_url_health, save_qa_result, send_slack_alert]
