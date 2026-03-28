@@ -11,6 +11,64 @@ import queue
 import time
 from agents.tools import streaming_url_queue
 
+# ============================================================
+# NEW: SCHEDULER IMPORTS AND SETUP
+# ============================================================
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+import atexit
+
+# Initialize background scheduler
+scheduler = BackgroundScheduler()
+scheduler.start()
+atexit.register(lambda: scheduler.shutdown())
+
+# Session state for scheduled jobs
+if "scheduled_jobs" not in st.session_state:
+    st.session_state["scheduled_jobs"] = {}
+
+# NEW: Helper function to run scheduled QA
+def run_scheduled_qa(workflow_name, url, goal, schedule_name):
+    """Function to run QA on a schedule"""
+    print(f"[SCHEDULER] Running {workflow_name} ({schedule_name}) at {datetime.now()}")
+    
+    initial_state = {
+        "url": url,
+        "workflow_name": workflow_name,
+        "goal": goal,
+        "schedule": schedule_name,
+        "status": "PENDING",
+        "steps": [],
+        "agent_output": "",
+        "error": None,
+        "started_at": datetime.now().isoformat(),
+        "completed_at": None
+    }
+    
+    try:
+        result = qa_graph.invoke(initial_state)
+        print(f"[SCHEDULER] Completed {workflow_name}: {result.get('status', 'UNKNOWN')}")
+    except Exception as e:
+        print(f"[SCHEDULER] Error running {workflow_name}: {e}")
+
+# NEW: Convert schedule to minutes
+def get_interval_minutes(schedule):
+    intervals = {
+        "every_1_min": 1,
+        "every_5_min": 5,
+        "every_15_min": 15,
+        "every_30_min": 30,
+        "hourly": 60,
+        "daily": 1440,
+    }
+    return intervals.get(schedule, None)
+
+# NEW: Generate unique job ID
+def generate_job_id(workflow_name, url):
+    import hashlib
+    unique_string = f"{workflow_name}_{url}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    return hashlib.md5(unique_string.encode()).hexdigest()[:12]
+# ============================================================
 
 
 # ---- Page Config ----
@@ -57,7 +115,6 @@ with st.sidebar:
     st.divider()
     st.subheader("🤖 LLM Provider")
     
-    # Display current LLM provider with icon
     provider = settings.LLM_PROVIDER
     provider_icons = {
         "google": "🔮 Google Gemini",
@@ -69,7 +126,6 @@ with st.sidebar:
     
     st.success(f"**Active:** {provider_display}")
     
-    # Show model name
     if provider == "google":
         st.caption(f"Model: `{settings.GEMINI_MODEL}`")
     elif provider == "openai":
@@ -104,10 +160,13 @@ with tab1:
         )
 
     with col2:
+        # ============================================================
+        # NEW: Added every_1_min and every_5_min options
+        # ============================================================
         schedule = st.selectbox(
             "Schedule",
-            ["manual", "every_15_min", "every_30_min", "hourly", "daily"],
-            help="How often to run this check (for demo, runs manually)"
+            ["manual", "every_1_min", "every_5_min", "every_15_min", "every_30_min", "hourly", "daily"],
+            help="How often to run this check. Use 'every_1_min' for testing only!"
         )
         severity_threshold = st.selectbox(
             "Alert Severity Threshold",
@@ -124,7 +183,55 @@ with tab1:
 
     st.markdown("---")
 
-    if st.button("🚀 Run QA Agent", type="primary", use_container_width=True):
+    # ============================================================
+    # NEW: Stop Schedule Button (only shown when schedule is active)
+    # ============================================================
+    
+    # Check if there's an active schedule for this workflow
+    current_job_id = None
+    is_currently_scheduled = False
+    
+    for job_id, job_info in st.session_state["scheduled_jobs"].items():
+        if job_info["workflow_name"] == workflow_name and job_info["url"] == url:
+            current_job_id = job_id
+            is_currently_scheduled = True
+            break
+    
+    # Show Stop button ONLY if there's an active schedule
+    if is_currently_scheduled:
+        st.warning(f"⏰ This workflow is currently scheduled: **{st.session_state['scheduled_jobs'][current_job_id]['schedule']}**")
+        
+        col_run, col_stop = st.columns([3, 1])
+        
+        with col_run:
+            run_clicked = st.button("🚀 Run QA Agent Now", type="primary", use_container_width=True)
+        
+        with col_stop:
+            if st.button("🛑 Stop Schedule", type="secondary", use_container_width=True):
+                try:
+                    scheduler.remove_job(current_job_id)
+                    del st.session_state["scheduled_jobs"][current_job_id]
+                    st.success("✅ Schedule stopped!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error stopping schedule: {e}")
+        
+        if run_clicked:
+            execute_qa = True
+        else:
+            execute_qa = False
+            
+    else:
+        # Normal Run button when no schedule is active
+        if st.button("🚀 Run QA Agent", type="primary", use_container_width=True):
+            execute_qa = True
+        else:
+            execute_qa = False
+    
+    # ============================================================
+    # Execute QA logic
+    # ============================================================
+    if execute_qa:
         if not url or not goal:
             st.error("Please provide both URL and QA Goal.")
         else:
@@ -135,7 +242,7 @@ with tab1:
                 except queue.Empty:
                     break
             
-            # Create placeholder for live preview (will show as soon as URL available)
+            # Create placeholder for live preview
             live_preview_placeholder = st.empty()
             streaming_url_displayed = False
             
@@ -144,7 +251,7 @@ with tab1:
             
             def run_qa_thread():
                 """Run QA in background thread"""
-                initial_state: QAState = {
+                initial_state = {
                     "url": url,
                     "workflow_name": workflow_name,
                     "goal": goal,
@@ -174,11 +281,9 @@ with tab1:
                 status_text = st.empty()
                 
                 while qa_thread.is_alive():
-                    # Check for streaming URL in queue (non-blocking)
                     try:
                         url_data = streaming_url_queue.get(timeout=0.1)
                         if url_data.get("streaming_url") and not streaming_url_displayed:
-                            # 🎉 SHOW LIVE PREVIEW BUTTON IMMEDIATELY!
                             with live_preview_placeholder.container():
                                 st.markdown("---")
                                 st.markdown("### 🔴 Live Browser Preview")
@@ -193,12 +298,9 @@ with tab1:
                     except queue.Empty:
                         pass
                     
-                    time.sleep(0.05)  # Small delay to prevent CPU spinning
+                    time.sleep(0.05)
             
-            # Wait for thread to complete
             qa_thread.join()
-            
-            # Clear the spinner and live preview placeholder
             status_text.empty()
             
             # Handle errors
@@ -241,7 +343,6 @@ with tab1:
                 else:
                     st.markdown("*No steps recorded*")
                 
-                # Keep showing the streaming URL if available
                 streaming_url = result.get("streaming_url")
                 if streaming_url and not streaming_url_displayed:
                     st.markdown("---")
@@ -249,6 +350,85 @@ with tab1:
                     st.caption("Watch the automation execute in real-time:")
                     st.link_button("🔗 Open Live Preview", streaming_url, type="primary")
                     st.caption(f"Run ID: `{result.get('run_id', 'N/A')}`")
+                
+                # ============================================================
+                # NEW: Setup recurring schedule if selected
+                # ============================================================
+                if schedule != "manual" and not is_currently_scheduled:
+                    interval_minutes = get_interval_minutes(schedule)
+                    if interval_minutes:
+                        job_id = generate_job_id(workflow_name, url)
+                        
+                        scheduler.add_job(
+                            func=run_scheduled_qa,
+                            trigger=IntervalTrigger(minutes=interval_minutes),
+                            id=job_id,
+                            args=[workflow_name, url, goal, schedule],
+                            replace_existing=True
+                        )
+                        
+                        st.session_state["scheduled_jobs"][job_id] = {
+                            "workflow_name": workflow_name,
+                            "url": url,
+                            "schedule": schedule,
+                            "created_at": datetime.now().isoformat()
+                        }
+                        
+                        st.success(f"✅ Scheduled to run **{schedule}** (every {interval_minutes} min)")
+                        if schedule == "every_1_min":
+                            st.warning("⚠️ 1-minute schedule is for testing only!")
+                        st.info("🔄 The schedule will run in the background. You can close this page.")
+                        st.rerun()
+
+
+    # ============================================================
+    # NEW: Active Schedules Section
+    # ============================================================
+    st.markdown("---")
+    st.subheader("⏰ Active Scheduled Jobs")
+    
+    if not st.session_state["scheduled_jobs"]:
+        st.info("No scheduled jobs. Select a schedule (every_1_min, hourly, etc.) and run to create one.")
+    else:
+        for job_id, job_info in list(st.session_state["scheduled_jobs"].items()):
+            col_s1, col_s2, col_s3, col_s4 = st.columns([2, 2, 2, 1])
+            
+            with col_s1:
+                st.markdown(f"**{job_info['workflow_name']}**")
+                st.caption(f"{job_info['url'][:40]}...")
+            
+            with col_s2:
+                st.markdown(f"⏱️ **{job_info['schedule']}**")
+            
+            with col_s3:
+                # Get next run time from scheduler
+                try:
+                    job = scheduler.get_job(job_id)
+                    if job and job.next_run_time:
+                        st.caption(f"Next run: {job.next_run_time.strftime('%H:%M:%S')}")
+                    else:
+                        st.caption("Status: Running")
+                except:
+                    st.caption("Status: Unknown")
+            
+            with col_s4:
+                if st.button("🗑️ Remove", key=f"remove_{job_id}"):
+                    try:
+                        scheduler.remove_job(job_id)
+                    except:
+                        pass
+                    del st.session_state["scheduled_jobs"][job_id]
+                    st.rerun()
+        
+        if st.button("🛑 Stop All Scheduled Jobs", type="primary"):
+            for job_id in list(st.session_state["scheduled_jobs"].keys()):
+                try:
+                    scheduler.remove_job(job_id)
+                except:
+                    pass
+            st.session_state["scheduled_jobs"].clear()
+            st.success("All scheduled jobs stopped!")
+            st.rerun()
 
 
 # ---- Tab 2: History ----
@@ -266,7 +446,6 @@ with tab2:
             st.info("No QA runs yet. Run your first check in the 'Run QA Check' tab.")
         else:
             for r in reversed(results):
-                # Handle status icon
                 status_icon = "✅" if r.status in ['COMPLETED', 'PASSED'] else "❌" if r.status == 'FAILED' else "⚠️"
                 
                 with st.expander(
@@ -278,13 +457,11 @@ with tab2:
                     col2.metric("URL", r.url[:30] + "..." if len(r.url) > 30 else r.url)
                     col3.metric("Duration", f"{r.duration_seconds:.1f}s" if r.duration_seconds else "N/A")
 
-                    # Safely get agent_output
                     agent_output = getattr(r, 'agent_output', None) or getattr(r, 'result', None)
                     if agent_output:
                         st.markdown("**Agent Output:**")
                         st.info(agent_output)
 
-                    # Safely get and parse steps
                     steps_data = getattr(r, 'steps', None) or getattr(r, 'steps_taken', None)
                     if steps_data:
                         st.markdown("**Steps:**")
@@ -294,67 +471,4 @@ with tab2:
                                 steps = json.loads(steps_data)
                             else:
                                 steps = steps_data
-                            if isinstance(steps, list):
-                                for i, step in enumerate(steps, 1):
-                                    st.markdown(f"{i}. {step}")
-                            else:
-                                st.markdown(f"1. {steps}")
-                        except (json.JSONDecodeError, TypeError):
-                            # If JSON parsing fails, show as string
-                            st.markdown(f"1. {str(steps_data)[:200]}")
-
-    except Exception as e:
-        st.error(f"Could not load history: {str(e)}")
-        st.info("Try running a test first to initialize the database.")
-
-
-# ---- Tab 3: About ----
-with tab3:
-    st.subheader("About This Project")
-    st.markdown("""
-    ## Autonomous Web QA Agent for Production Monitoring
-
-    ### Problem
-    Production web apps break silently. Manual QA is slow and doesn't run 24/7.
-
-    ### Solution
-    An autonomous agent that uses **TinyFish** to browse your production app,
-    **LangGraph** to orchestrate decision-making, and **LangChain** tools to
-    check, test, store results, and alert your team.
-
-    ### Tech Stack
-    | Component | Technology |
-    |-----------|------------|
-    | Web Agent | TinyFish API |
-    | AI Orchestration | LangGraph |
-    | LLM + Tools | LangChain + OpenAI GPT-4 |
-    | UI | Streamlit |
-    | Database | SQLite (SQLAlchemy) |
-    | Alerts | Slack Webhooks |
-
-    ### Architecture
-    ```
-    User (Streamlit UI)
-         |
-    LangGraph QA Graph
-    ├── Node 1: validate_input
-    ├── Node 2: run_agent (LangChain AgentExecutor)
-    │   ├── Tool: check_url_health
-    │   ├── Tool: run_tinyfish_qa  <-- TinyFish Web Agent
-    │   ├── Tool: save_qa_result   <-- SQLite DB
-    │   └── Tool: send_slack_alert <-- Slack
-    └── Node 3: finalize
-    ```
-
-    ### Team Roles
-    - **Agent Architect**: Designed LangGraph flow, nodes, edges, system prompts
-    - **Tool Builder**: Built @tool functions - TinyFish, health check, DB, Slack
-    - **Experience Designer**: Built Streamlit UI with streaming results & history
-
-    ### Hackathon
-    TinyFish Hackathon 2026 - Build an Autonomous Web Agent
-    """)
-
-# ---- Footer ----
-st.divider()
-st.caption("TinyFish Hackathon 2026 | Autonomous Web QA Agent | pavankumarh14")
+                            if isinstance(steps, list_
