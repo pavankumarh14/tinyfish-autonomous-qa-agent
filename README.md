@@ -52,16 +52,30 @@ An **Autonomous Web QA Agent** that:
 ## Tech Stack
 
 | Role | Component | Technology |
-|------|-----------|------------|
+| --- | --- | --- |
 | Agent Architect | AI Orchestration | LangGraph 0.2 |
-| Agent Architect | LLM | OpenAI GPT-4o |
+| Agent Architect | LLM | Google Gemini / OpenAI / Groq / Ollama |
 | Agent Architect | Prompts | LangChain Prompts |
-| Tool Builder | Web Agent | TinyFish API |
+| Tool Builder | Web Agent | TinyFish API + Live Streaming |
 | Tool Builder | Health Check | Python requests |
-| Tool Builder | Database | SQLite + SQLAlchemy |
+| Tool Builder | Database | SQLite / PostgreSQL + SQLAlchemy |
+| Tool Builder | Scheduler | APScheduler (BackgroundScheduler) |
 | Tool Builder | Alerts | Slack Webhooks |
 | Experience Designer | UI | Streamlit 1.32 |
 | Experience Designer | Config | Pydantic Settings |
+
+## LLM Providers (All Have Free Tiers!)
+
+Choose your preferred LLM provider via `LLM_PROVIDER` env variable:
+
+| Provider | Setup | Free Tier | Speed |
+|----------|-------|-----------|-------|
+| **Google Gemini** (default) | `GOOGLE_API_KEY` | 15 req/min, 1M tokens/day | Fast |
+| **OpenAI** | `OPENAI_API_KEY` | Free tier available | Medium |
+| **Groq** | `GROQ_API_KEY` | Very fast, generous free tier | Very Fast |
+| **Ollama** | Local install | Completely free, runs locally | Depends on hardware |
+
+Set `LLM_PROVIDER=google|openai|groq|ollama` in your `.env` file.
 
 ## Project Structure
 
@@ -85,12 +99,18 @@ tinyfish-autonomous-qa-agent/
 
 ## Key Features
 
-- **Autonomous Testing**: TinyFish browses your app and verifies goals without human intervention
-- **Smart Orchestration**: LangGraph conditional edges route flow based on validation results
-- **Persistent History**: All QA runs stored in SQLite with full step-by-step logs
-- **Instant Alerts**: Slack notifications for FAILED checks with HIGH/MEDIUM severity
-- **Clean Dashboard**: Streamlit UI with 3 tabs — Run QA, History, About
-- **Configurable**: Any URL, any goal, any severity threshold
+ - **Autonomous Testing**: TinyFish browses your app and verifies goals without human intervention
+ - **Smart Orchestration**: LangGraph conditional edges route flow based on validation results
+ - **Live Browser Preview**: Watch TinyFish automation in real-time via streaming URL (🔴 Live Preview)
+ - **Scheduled Monitoring**: Set up recurring QA checks (every 1/5/15/30 min, hourly, daily)
+ - **Active Job Management**: View, monitor, and stop scheduled jobs from the dashboard
+ - **Multi-Provider LLM**: Support for Google Gemini (default), OpenAI, Groq, and Ollama
+ - **Persistent History**: All QA runs stored in SQLite/PostgreSQL with full step-by-step logs
+ - **Instant Alerts**: Slack notifications for FAILED checks with HIGH/MEDIUM severity
+ - **Clean Dashboard**: Streamlit UI with tabs — Run QA, History, Active Schedules, About
+ - **Pre-built Workflows**: Login Flow, Checkout Flow, Form Validation templates
+ - **Configurable**: Any URL, any goal, any severity threshold, any LLM provider
+
 
 ## Quick Start
 
@@ -115,28 +135,75 @@ cp .env.example .env
 ```bash
 streamlit run app.py
 ```
-
 ## Environment Variables
 
 ```env
-TINYFISH_API_KEY=your_tinyfish_api_key
-OPENAI_API_KEY=your_openai_api_key
-SLACK_WEBHOOK_URL=your_slack_webhook_url  # optional
-OPENAI_MODEL=gpt-4o
+# ==============================================
+# 1. TinyFish API Key (REQUIRED)
+#    Get from: https://www.tinyfish.ai -> Dashboard -> API Keys
+# ==============================================
+TINYFISH_API_KEY=your_tinyfish_api_key_here
+
+# ==============================================
+# 2. LLM Provider Selection (REQUIRED)
+#    Options: google, openai, groq, ollama
+# ==============================================
+LLM_PROVIDER=google
+
+# ----------------------------------------------
+# Google Gemini (FREE - Recommended)
+# Get from: https://aistudio.google.com/app/apikey
+# Free tier: 15 req/min, 1M tokens/day
+# ----------------------------------------------
+GOOGLE_API_KEY=your_google_api_key_here
+GEMINI_MODEL=gemini-2.0-flash
+
+# ----------------------------------------------
+# OR OpenAI
+# Get from: https://platform.openai.com
+# ----------------------------------------------
+# OPENAI_API_KEY=your_openai_key_here
+# OPENAI_MODEL=gpt-3.5-turbo
+
+# ----------------------------------------------
+# OR Groq (Very Fast!)
+# Get from: https://console.groq.com
+# ----------------------------------------------
+# GROQ_API_KEY=your_groq_key_here
+# GROQ_MODEL=llama-3.1-70b-versatile
+
+# ----------------------------------------------
+# OR Ollama (Local - Completely Free)
+# Install from: https://ollama.com
+# ----------------------------------------------
+# OLLAMA_BASE_URL=http://localhost:11434
+# OLLAMA_MODEL=llama3.1
+
+# ==============================================
+# 3. Database (Auto-created, no setup needed)
+#    SQLite (default) or PostgreSQL
+# ==============================================
 DATABASE_URL=sqlite:///./qa_results.db
-```
+
+# ==============================================
+# 4. Slack Webhook (OPTIONAL)
+#    Get from: https://api.slack.com/messaging/webhooks
+#    Leave blank to disable Slack alerts
+# ==============================================
+SLACK_WEBHOOK_URL=
 
 ## How It Works
 
 1. **User opens Streamlit** → enters URL, workflow name, and QA goal
 2. **LangGraph `validate_input` node** → validates URL format, sets RUNNING state
-3. **LangGraph `run_agent` node** → LangChain AgentExecutor takes over:
+3. **LangGraph `run_agent` node** → LangChain AgentExecutor takes over: 
    - Calls `check_url_health` → verifies URL is reachable (HTTP 200)
-   - Calls `run_tinyfish_qa` → TinyFish agent browses the app, executes the goal
-   - Calls `save_qa_result` → stores result in SQLite DB
+   - Calls `run_tinyfish_qa` → TinyFish agent browses with LIVE streaming URL for real-time preview
+   - Calls `save_qa_result` → stores result in SQLite/PostgreSQL DB
    - Calls `send_slack_alert` → fires Slack alert if FAILED + HIGH/MEDIUM severity
-4. **LangGraph `finalize` node** → records timestamps, prepares summary
-5. **Streamlit displays** → status, steps taken, agent output, duration
+  **Schedule Setup** (optional) → APScheduler creates background job for recurring checks
+5. **LangGraph `finalize` node** → records timestamps, prepares summary
+6. **Streamlit displays** → status, steps taken, agent output, duration
 
 ## Team Roles
 
