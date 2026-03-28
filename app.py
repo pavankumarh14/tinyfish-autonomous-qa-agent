@@ -12,7 +12,7 @@ import time
 from agents.tools import streaming_url_queue
 
 # ============================================================
-# NEW: SCHEDULER IMPORTS AND SETUP
+# SCHEDULER IMPORTS AND SETUP
 # ============================================================
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -27,7 +27,7 @@ atexit.register(lambda: scheduler.shutdown())
 if "scheduled_jobs" not in st.session_state:
     st.session_state["scheduled_jobs"] = {}
 
-# NEW: Helper function to run scheduled QA
+# Helper function to run scheduled QA
 def run_scheduled_qa(workflow_name, url, goal, schedule_name):
     """Function to run QA on a schedule"""
     print(f"[SCHEDULER] Running {workflow_name} ({schedule_name}) at {datetime.now()}")
@@ -51,7 +51,7 @@ def run_scheduled_qa(workflow_name, url, goal, schedule_name):
     except Exception as e:
         print(f"[SCHEDULER] Error running {workflow_name}: {e}")
 
-# NEW: Convert schedule to minutes
+# Convert schedule to minutes
 def get_interval_minutes(schedule):
     intervals = {
         "every_1_min": 1,
@@ -63,7 +63,7 @@ def get_interval_minutes(schedule):
     }
     return intervals.get(schedule, None)
 
-# NEW: Generate unique job ID
+# Generate unique job ID
 def generate_job_id(workflow_name, url):
     import hashlib
     unique_string = f"{workflow_name}_{url}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -160,9 +160,6 @@ with tab1:
         )
 
     with col2:
-        # ============================================================
-        # NEW: Added every_1_min and every_5_min options
-        # ============================================================
         schedule = st.selectbox(
             "Schedule",
             ["manual", "every_1_min", "every_5_min", "every_15_min", "every_30_min", "hourly", "daily"],
@@ -183,10 +180,6 @@ with tab1:
 
     st.markdown("---")
 
-    # ============================================================
-    # NEW: Stop Schedule Button (only shown when schedule is active)
-    # ============================================================
-    
     # Check if there's an active schedule for this workflow
     current_job_id = None
     is_currently_scheduled = False
@@ -228,9 +221,7 @@ with tab1:
         else:
             execute_qa = False
     
-    # ============================================================
     # Execute QA logic
-    # ============================================================
     if execute_qa:
         if not url or not goal:
             st.error("Please provide both URL and QA Goal.")
@@ -351,9 +342,7 @@ with tab1:
                     st.link_button("🔗 Open Live Preview", streaming_url, type="primary")
                     st.caption(f"Run ID: `{result.get('run_id', 'N/A')}`")
                 
-                # ============================================================
-                # NEW: Setup recurring schedule if selected
-                # ============================================================
+                # Setup recurring schedule if selected
                 if schedule != "manual" and not is_currently_scheduled:
                     interval_minutes = get_interval_minutes(schedule)
                     if interval_minutes:
@@ -381,9 +370,7 @@ with tab1:
                         st.rerun()
 
 
-    # ============================================================
-    # NEW: Active Schedules Section
-    # ============================================================
+    # Active Schedules Section
     st.markdown("---")
     st.subheader("⏰ Active Scheduled Jobs")
     
@@ -471,4 +458,67 @@ with tab2:
                                 steps = json.loads(steps_data)
                             else:
                                 steps = steps_data
-                            if isinstance(steps, list_
+                            if isinstance(steps, list):
+                                for i, step in enumerate(steps, 1):
+                                    st.markdown(f"{i}. {step}")
+                            else:
+                                st.markdown(f"1. {steps}")
+                        except (json.JSONDecodeError, TypeError):
+                            # If JSON parsing fails, show as string
+                            st.markdown(f"1. {str(steps_data)[:200]}")
+
+    except Exception as e:
+        st.error(f"Could not load history: {str(e)}")
+        st.info("Try running a test first to initialize the database.")
+
+
+# ---- Tab 3: About ----
+with tab3:
+    st.subheader("About This Project")
+    st.markdown("""
+    ## Autonomous Web QA Agent for Production Monitoring
+
+    ### Problem
+    Production web apps break silently. Manual QA is slow and doesn't run 24/7.
+
+    ### Solution
+    An autonomous agent that uses **TinyFish** to browse your production app,
+    **LangGraph** to orchestrate decision-making, and **LangChain** tools to
+    check, test, store results, and alert your team.
+
+    ### Tech Stack
+    | Component | Technology |
+    |-----------|------------|
+    | Web Agent | TinyFish API |
+    | AI Orchestration | LangGraph |
+    | LLM + Tools | LangChain + OpenAI GPT-4 |
+    | UI | Streamlit |
+    | Database | SQLite (SQLAlchemy) |
+    | Alerts | Slack Webhooks |
+
+    ### Architecture
+    ```
+    User (Streamlit UI)
+         |
+    LangGraph QA Graph
+    ├── Node 1: validate_input
+    ├── Node 2: run_agent (LangChain AgentExecutor)
+    │   ├── Tool: check_url_health
+    │   ├── Tool: run_tinyfish_qa  <-- TinyFish Web Agent
+    │   ├── Tool: save_qa_result   <-- SQLite DB
+    │   └── Tool: send_slack_alert <-- Slack
+    └── Node 3: finalize
+    ```
+
+    ### Team Roles
+    - **Agent Architect**: Designed LangGraph flow, nodes, edges, system prompts
+    - **Tool Builder**: Built @tool functions - TinyFish, health check, DB, Slack
+    - **Experience Designer**: Built Streamlit UI with streaming results & history
+
+    ### Hackathon
+    TinyFish Hackathon 2026 - Build an Autonomous Web Agent
+    """)
+
+# ---- Footer ----
+st.divider()
+st.caption("TinyFish Hackathon 2026 | Autonomous Web QA Agent | pavankumarh14")
