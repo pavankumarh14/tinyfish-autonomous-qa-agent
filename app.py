@@ -6,6 +6,11 @@ from graph.qa_graph import qa_graph
 from db.database import get_all_results, get_db
 from graph.state import QAState
 from config import settings
+import threading
+import queue
+import time
+from agents.tools import streaming_url_queue
+
 
 
 # ---- Page Config ----
@@ -123,8 +128,22 @@ with tab1:
         if not url or not goal:
             st.error("Please provide both URL and QA Goal.")
         else:
-            with st.spinner("Running QA Agent... This may take 30-60 seconds."):
-                # Prepare initial state
+            # Clear any previous streaming URL from queue
+            while not streaming_url_queue.empty():
+                try:
+                    streaming_url_queue.get_nowait()
+                except queue.Empty:
+                    break
+            
+            # Create placeholder for live preview (will show as soon as URL available)
+            live_preview_placeholder = st.empty()
+            streaming_url_displayed = False
+            
+            # Container for final results
+            result_container = {}
+            
+            def run_qa_thread():
+                """Run QA in background thread"""
                 initial_state: QAState = {
                     "url": url,
                     "workflow_name": workflow_name,
@@ -137,54 +156,100 @@ with tab1:
                     "started_at": datetime.now().isoformat(),
                     "completed_at": None
                 }
-
+                
                 try:
                     result = qa_graph.invoke(initial_state)
-
-                    # Display result
-                    st.markdown("### Results")
-
-                    status = result.get("status", "UNKNOWN")
-                    if status in ["COMPLETED", "PASSED"]:
-                        st.success(f"✅ Status: {status}")
-                    elif status == "FAILED":
-                        st.error(f"❌ Status: {status}")
-                    elif status == "ERROR":
-                        st.error(f"🚨 Status: {status}")
-                    else:
-                        st.warning(f"⚠️ Status: {status}")
-
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        st.metric("Started At", result.get("started_at", "N/A"))
-                    with col_b:
-                        st.metric("Completed At", result.get("completed_at", "N/A"))
-
-                    if result.get("error"):
-                        st.error(f"Error: {result['error']}")
-
-                    st.markdown("#### Agent Output")
-                    # Check both field names for backward compatibility
-                    output_text = result.get("agent_output") or result.get("result", "No output")
-                    st.info(output_text)
+                    result_container["result"] = result
+                    result_container["success"] = True
+                except Exception as e:
+                    result_container["error"] = str(e)
+                    result_container["success"] = False
+            
+            # Start QA in background thread
+            qa_thread = threading.Thread(target=run_qa_thread)
+            qa_thread.start()
+            
+            # Poll for streaming URL while thread runs
+            with st.spinner("Running QA Agent... This may take 30-60 seconds."):
+                status_text = st.empty()
+                
+                while qa_thread.is_alive():
+                    # Check for streaming URL in queue (non-blocking)
+                    try:
+                        url_data = streaming_url_queue.get(timeout=0.1)
+                        if url_data.get("streaming_url") and not streaming_url_displayed:
+                            # 🎉 SHOW LIVE PREVIEW BUTTON IMMEDIATELY!
+                            with live_preview_placeholder.container():
+                                st.markdown("---")
+                                st.markdown("### 🔴 Live Browser Preview")
+                                st.caption("Watch the automation execute in real-time:")
+                                st.link_button(
+                                    "🔗 Open Live Preview", 
+                                    url_data["streaming_url"], 
+                                    type="primary"
+                                )
+                                st.caption(f"Run ID: `{url_data.get('run_id', 'N/A')}`")
+                                streaming_url_displayed = True
+                    except queue.Empty:
+                        pass
                     
-                    st.markdown("#### Steps Taken")
-                    steps_list = result.get("steps_taken") or result.get("steps", [])
-                    if steps_list:
-                        for i, step in enumerate(steps_list, 1):
-                            st.markdown(f"{i}. {step}")
-                    else:
-                        st.markdown("*No steps recorded*")
-                                        
-                    # Show Live Browser Preview URL if available
-                    streaming_url = result.get("streaming_url")
-                    if streaming_url:
-                        st.markdown("---")
-                        st.markdown("### 🔴 Live Browser Preview")
-                        st.caption("Watch the automation execute in real-time:")
-                        st.link_button("🔗 Open Live Preview", streaming_url, type="primary")
-                        st.caption(f"Run ID: `{result.get('run_id', 'N/A')}`")
-                        st.markdown("---")
+                    time.sleep(0.05)  # Small delay to prevent CPU spinning
+            
+            # Wait for thread to complete
+            qa_thread.join()
+            
+            # Clear the spinner and live preview placeholder
+            status_text.empty()
+            
+            # Handle errors
+            if not result_container.get("success"):
+                st.error(f"Agent error: {result_container.get('error', 'Unknown error')}")
+            else:
+                result = result_container["result"]
+                
+                # Display final results
+                st.markdown("### Results")
+
+                status = result.get("status", "UNKNOWN")
+                if status in ["COMPLETED", "PASSED"]:
+                    st.success(f"✅ Status: {status}")
+                elif status == "FAILED":
+                    st.error(f"❌ Status: {status}")
+                elif status == "ERROR":
+                    st.error(f"🚨 Status: {status}")
+                else:
+                    st.warning(f"⚠️ Status: {status}")
+
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.metric("Started At", result.get("started_at", "N/A"))
+                with col_b:
+                    st.metric("Completed At", result.get("completed_at", "N/A"))
+
+                if result.get("error"):
+                    st.error(f"Error: {result['error']}")
+
+                st.markdown("#### Agent Output")
+                output_text = result.get("agent_output") or result.get("result", "No output")
+                st.info(output_text)
+                
+                st.markdown("#### Steps Taken")
+                steps_list = result.get("steps_taken") or result.get("steps", [])
+                if steps_list:
+                    for i, step in enumerate(steps_list, 1):
+                        st.markdown(f"{i}. {step}")
+                else:
+                    st.markdown("*No steps recorded*")
+                
+                # Keep showing the streaming URL if available
+                streaming_url = result.get("streaming_url")
+                if streaming_url and not streaming_url_displayed:
+                    st.markdown("---")
+                    st.markdown("### 🔴 Live Browser Preview")
+                    st.caption("Watch the automation execute in real-time:")
+                    st.link_button("🔗 Open Live Preview", streaming_url, type="primary")
+                    st.caption(f"Run ID: `{result.get('run_id', 'N/A')}`")
+
 
 
 
